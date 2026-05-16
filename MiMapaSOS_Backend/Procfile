@@ -1,0 +1,5 @@
+# Procfile
+usuarios: set PYTHONPATH=. && python ms_usuarios/app.py
+alertas: set PYTHONPATH=. && python ms_alertas/app.py
+rutas: set PYTHONPATH=. && python ms_rutas/app.py
+geografia: set PYTHONPATH=. && python ms_geografia/app.py

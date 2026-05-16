@@ -6,15 +6,14 @@ class GeografiaDAO:
         if not conn: return []
         try:
             cur = conn.cursor()
-            # latitud y longitud de las zonas seguras
             sql = """
                 SELECT id_zona, nombre, descripcion, 
-                       ST_X(geom) as lon, ST_Y(geom) as lat,
-                       detalle_zona_id_detalle
+                       ST_X(geom) as lon, ST_Y(geom) as lat
                 FROM zonas_seguras
             """
             cur.execute(sql)
-            return cur.fetchall()
+            columnas = [desc[0] for desc in cur.description]
+            return [dict(zip(columnas, row)) for row in cur.fetchall()]
         finally:
             cur.close()
             conn.close()
@@ -24,10 +23,10 @@ class GeografiaDAO:
         if not conn: return []
         try:
             cur = conn.cursor()
-            # datos de posible riesgo
             sql = "SELECT id_inundacion, cota, tipo_riesgo FROM zona_inundacion"
             cur.execute(sql)
-            return cur.fetchall()
+            columnas = [desc[0] for desc in cur.description]
+            return [dict(zip(columnas, row)) for row in cur.fetchall()]
         finally:
             cur.close()
             conn.close()
