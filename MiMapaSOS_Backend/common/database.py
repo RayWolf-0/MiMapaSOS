@@ -1,16 +1,18 @@
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from prisma import Prisma
 
-def get_db_connection():
-    try:
-        conn = psycopg2.connect(
-            host="localhost",
-            database="mimapasos_db",
-            user="postgres",
-            password="12345",
-            port="5432"
-        )
-        return conn
-    except Exception as e:
-        print(f"Error de conexión: {e}")
-        return None
+# Creamos una única instancia global del cliente
+db = Prisma()
+
+async def get_db():
+    """
+    Función para obtener la conexión. 
+    Se asegura de conectar si no está activo.
+    """
+    if not db.is_connected():
+        await db.connect()
+    return db
+
+async def close_db():
+    """Para cerrar la conexión limpiamente al apagar el servicio"""
+    if db.is_connected():
+        await db.disconnect()

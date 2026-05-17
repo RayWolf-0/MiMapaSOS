@@ -1,36 +1,38 @@
-from common.database import get_db_connection
+from common.database import get_db
 
 class UsuarioDAO:
-    def obtener_o_registrar(self, google_id, email, nombre):
-        conn = get_db_connection()
-        cur = conn.cursor()
+    async def obtener_o_registrar(self, google_id, email, nombre):
         try:
-            # Buscar si el google_id ya está en la tabla autenticacion
-            cur.execute("SELECT usuarios_id_usuario FROM autenticacion WHERE google_id = %s", (google_id,))
-            resultado = cur.fetchone()
+            db = await get_db()
 
-            if resultado:
-                # El usuario ya existe
-                user_id = resultado['usuarios_id_usuario']
+            auth_record = await db.autenticacion.find_first(
+                where={'google_id': str(google_id)}
+            )
+
+            if auth_record:
+                user_id = auth_record.USUARIOS_id_usuario
             else:
-                # crear id si un usuario es nuevo
-                cur.execute("SELECT COALESCE(MAX(id_usuario), 0) + 1 FROM usuarios")
-                new_id = cur.fetchone()['f0']
+                res = await db.query_raw('SELECT COALESCE(MAX(id_usuario), 0) + 1 as next_id FROM "USUARIOS"')
+                new_id = res[0]['next_id']
+                async with db.batch_() as batch:
+                    batch.usuarios.create(
+                        data={
+                            'id_usuario': new_id,
+                            'nombre': nombre
+                        }
+                    )
+                    batch.autenticacion.create(
+                        data={
+                            'google_id': str(google_id),
+                            'email': email,
+                            'USUARIOS_id_usuario': new_id
+                        }
+                    )
                 
-                # insertar usuarios en la tabla
-                cur.execute("INSERT INTO usuarios (id_usuario, nombre) VALUES (%s, %s)", (new_id, nombre))
-                
-                # autenticacion
-                cur.execute("INSERT INTO autenticacion (google_id, email, usuarios_id_usuario) VALUES (%s, %s, %s)", 
-                            (google_id, email, new_id))
-                conn.commit()
                 user_id = new_id
 
             return {"id": user_id, "nombre": nombre, "email": email}
-        
+
         except Exception as e:
-            conn.rollback()
+            print(f"Error en UsuarioDAO: {e}")
             raise e
-        finally:
-            cur.close()
-            conn.close()

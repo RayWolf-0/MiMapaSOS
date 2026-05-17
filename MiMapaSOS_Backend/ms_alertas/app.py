@@ -9,8 +9,7 @@ dao = AlertaDAO()
 
 # Monitoreo ajustado a Chile
 @app.route('/verificar-sismos', methods=['GET'])
-def verificar_sismos():
-    # Api USGS filtrado en Chile según CSN/SHOA sismos > 5.0 mag
+async def verificar_sismos():
     url_usgs = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
     
     try:
@@ -23,12 +22,11 @@ def verificar_sismos():
             lugar = sismo['properties']['place'].lower()
             id_sismo = sismo['id']
             
-            # Criterio Chileno
             if mag and mag >= 5.0 and "chile" in lugar:
-                # Si mag > 7.0 en costa, el SHOA usualmente lanza alerta de tsunami
                 estado = "ALERTA TSUNAMI" if mag >= 7.0 else "PRECAUCIÓN"
                 
-                if dao.insertar_alerta(id_sismo, mag, estado):
+                # 1. AGREGAR AWAIT AQUÍ
+                if await dao.insertar_alerta(id_sismo, mag, estado):
                     alertas_detectadas.append({
                         "id": id_sismo, 
                         "fuente": "CSN / SHOA",
@@ -43,13 +41,12 @@ def verificar_sismos():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# endpoint para generar un simulacro de alerta
+# Endpoint para generar un simulacro de alerta
 @app.route('/activar-simulacro', methods=['POST'])
-def activar_simulacro():
+async def activar_simulacro(): # 2. AGREGAR ASYNC AQUÍ
     import uuid
     id_simulacro = f"BOLETIN-SHOA-SIM-{uuid.uuid4().hex[:4].upper()}"
     
-    # simular datos segun zona de cobertura
     data_simulacro = {
         "id_alerta": id_simulacro,
         "institucion": "SHOA / CSN (SIMULACRO)",
@@ -59,8 +56,7 @@ def activar_simulacro():
         "instruccion": "Evacuación inmediata a zonas sobre la Cota 30 en Valparaíso."
     }
     
-    # se guarda en la base de datos
-    if dao.insertar_alerta(id_simulacro, 8.5, "ALERTA ROJA"):
+    if await dao.insertar_alerta(id_simulacro, 8.5, "ALERTA ROJA"):
         return jsonify(data_simulacro), 201
     return jsonify({"error": "Error al registrar simulacro"}), 500
 

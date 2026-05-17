@@ -1,52 +1,31 @@
-from common.database import get_db_connection
+from common.database import get_db
 import json
 
 class RutaDAO:
-    def guardar_ruta(self, id_ruta, distancia, tiempo, nodos, id_usuario, id_zona, id_alerta):
-        conn = get_db_connection()
-        if not conn:
-            return False
-            
+    async def guardar_ruta(self, id_ruta, distancia, tiempo, nodos, id_usuario, id_zona, id_alerta, id_inundacion="ZI-PLAN-VAP-01"):
+        """
+        Guarda la ruta calculada en Supabase usando Prisma.
+        """
         try:
-            cur = conn.cursor()
+            db = await get_db()
 
-            trazado_json = json.dumps(nodos)
-
-            sql = """
-                INSERT INTO rutas (
-                    id_ruta, 
-                    distancia_metros, 
-                    tiempo_estimado, 
-                    trazado, 
-                    usuarios_id_usuario, 
-                    zonas_seguras_id_zona, 
-                    alertas_tsunami_id_alerta
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s);
-            """
-            valores = (
-                str(id_ruta), 
-                float(distancia), 
-                int(tiempo), 
-                trazado_json, 
-                int(id_usuario), 
-                str(id_zona), 
-                str(id_alerta)
+            
+            await db.rutas.create(
+                data={
+                    'id_ruta': str(id_ruta),
+                    'distancia_metros': float(distancia),
+                    'tiempo_estimado': int(tiempo),
+                    'trazado': json.dumps(nodos), 
+                    'usuarios_id_usuario': int(id_usuario),
+                    'zonas_seguras_id_zona': str(id_zona),
+                    'alertas_tsunami_id_alerta': str(id_alerta),
+                    'zona_inundacion_id_inundacion': str(id_inundacion)
+                }
             )
-            
-            cur.execute(sql, valores)
-            conn.commit()
-            
-            print(f"--- Ruta {id_ruta} persistida exitosamente en PostgreSQL ---")
+
+            print(f"--- Ruta {id_ruta} persistida exitosamente con Prisma ---")
             return True
 
         except Exception as e:
             print(f"Error crítico en RutaDAO: {e}")
-            if conn:
-                conn.rollback()
             return False
-            
-        finally:
-            if cur:
-                cur.close()
-            if conn:
-                conn.close()

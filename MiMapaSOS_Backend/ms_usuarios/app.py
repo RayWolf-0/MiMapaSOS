@@ -10,26 +10,32 @@ dao = UsuarioDAO()
 GOOGLE_CLIENT_ID = "TU_CLIENT_ID_AQUI.apps.googleusercontent.com"
 
 @app.route('/auth/google', methods=['POST'])
-def login_google():
+async def login_google(): # <--- AGREGAR ASYNC
     token = request.json.get('token')
     
+    if not token:
+        return jsonify({"status": "error", "message": "Falta el token"}), 400
+    
     try:
-        # token de google
+        # Verificación del token de google (esto es síncrono, no necesita await)
         idinfo = id_token.verify_oauth2_token(token, requests.Request(), GOOGLE_CLIENT_ID)
         
-        # usuario
-        google_id = idinfo['sub'] # ID de Google
+        # Datos del usuario obtenidos de Google
+        google_id = idinfo['sub']
         email = idinfo['email']
         nombre = idinfo.get('name', 'Usuario de Google')
 
-        # 3. Verificar en DB o registrar si es nuevo
-        usuario = dao.obtener_o_registrar(google_id, email, nombre)
+        # 3. Verificar en DB o registrar (AQUÍ AGREGAMOS EL AWAIT)
+        usuario = await dao.obtener_o_registrar(google_id, email, nombre)
         
         return jsonify({"status": "success", "user": usuario}), 200
 
     except ValueError:
         # Token inválido
         return jsonify({"status": "error", "message": "Token de Google no válido"}), 401
+    except Exception as e:
+        print(f"Error en login_google: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(port=5001)

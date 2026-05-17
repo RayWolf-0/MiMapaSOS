@@ -1,32 +1,39 @@
-from common.database import get_db_connection
+from common.database import get_db
 
 class GeografiaDAO:
-    def obtener_zonas_seguras(self):
-        conn = get_db_connection()
-        if not conn: return []
+    async def obtener_zonas_seguras(self):
+        """
+        Recupera las zonas seguras desde Supabase usando Raw SQL para PostGIS.
+        """
         try:
-            cur = conn.cursor()
+            db = await get_db()
+
             sql = """
                 SELECT id_zona, nombre, descripcion, 
-                       ST_X(geom) as lon, ST_Y(geom) as lat
+                       ST_X(geom::geometry) as lon, 
+                       ST_Y(geom::geometry) as lat
                 FROM zonas_seguras
+                WHERE geom IS NOT NULL
             """
-            cur.execute(sql)
-            columnas = [desc[0] for desc in cur.description]
-            return [dict(zip(columnas, row)) for row in cur.fetchall()]
-        finally:
-            cur.close()
-            conn.close()
+            resultados = await db.query_raw(sql)
 
-    def obtener_zonas_inundacion(self):
-        conn = get_db_connection()
-        if not conn: return []
+            return resultados
+            
+        except Exception as e:
+            print(f"Error en GeografiaDAO (Zonas Seguras): {e}")
+            return []
+
+    async def obtener_zonas_inundacion(self):
+        """
+        Recupera las áreas de riesgo de inundación.
+        """
         try:
-            cur = conn.cursor()
-            sql = "SELECT id_inundacion, cota, tipo_riesgo FROM zona_inundacion"
-            cur.execute(sql)
-            columnas = [desc[0] for desc in cur.description]
-            return [dict(zip(columnas, row)) for row in cur.fetchall()]
-        finally:
-            cur.close()
-            conn.close()
+            db = await get_db()
+
+            resultados = await db.zona_inundacion.find_many()
+
+            return [zona.dict() for zona in resultados]
+            
+        except Exception as e:
+            print(f"Error en GeografiaDAO (Inundación): {e}")
+            return []

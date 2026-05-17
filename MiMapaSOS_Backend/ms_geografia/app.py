@@ -7,9 +7,9 @@ CORS(app)
 dao = GeografiaDAO()
 
 @app.route('/mapa/zonas-seguras', methods=['GET'])
-def get_zonas_seguras():
+async def get_zonas_seguras():
     try:
-        zonas = dao.obtener_zonas_seguras()
+        zonas = await dao.obtener_zonas_seguras()
         return jsonify({
             "status": "success",
             "total": len(zonas),

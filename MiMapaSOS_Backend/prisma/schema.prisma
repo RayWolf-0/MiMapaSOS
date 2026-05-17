@@ -1,0 +1,101 @@
+generator client {
+  provider                    = "prisma-client-py"
+  recursive_type_depth        = -1
+  enable_experimental_decimal = true
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model alertas_tsunami {
+  id_alerta  String    @id @db.VarChar(255)
+  magnitud   Decimal?  @db.Decimal(3, 1)
+  estado     String?   @db.VarChar(20)
+  fecha_hora DateTime? @default(now()) @db.Timestamptz(6)
+  rutas      rutas[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model autenticacion {
+  google_id           String   @id @db.VarChar(50)
+  email               String   @db.VarChar(100)
+  token               String?
+  usuarios_id_usuario Int
+  usuarios            usuarios @relation(fields: [usuarios_id_usuario], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "autenticacion_usuarios_fk")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model detalle_zona {
+  id_detalle    String          @id @db.VarChar(200)
+  cota          Decimal?        @db.Decimal(5, 2)
+  capacidad     Int?
+  zonas_seguras zonas_seguras[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model rutas {
+  id_ruta                       String          @id @db.VarChar(20)
+  distancia_metros              Decimal?        @db.Decimal(10, 2)
+  tiempo_estimado               Int?
+  trazado                       String?
+  usuarios_id_usuario           Int
+  zonas_seguras_id_zona         String          @db.VarChar(20)
+  alertas_tsunami_id_alerta     String          @db.VarChar(255)
+  zona_inundacion_id_inundacion String          @db.VarChar(50)
+  alertas_tsunami               alertas_tsunami @relation(fields: [alertas_tsunami_id_alerta], references: [id_alerta], onDelete: NoAction, onUpdate: NoAction, map: "rutas_alertas_tsunami_fk")
+  usuarios                      usuarios        @relation(fields: [usuarios_id_usuario], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "rutas_usuarios_fk")
+  zona_inundacion               zona_inundacion @relation(fields: [zona_inundacion_id_inundacion], references: [id_inundacion], onDelete: NoAction, onUpdate: NoAction, map: "rutas_zona_inundacion_fk")
+  zonas_seguras                 zonas_seguras   @relation(fields: [zonas_seguras_id_zona], references: [id_zona], onDelete: NoAction, onUpdate: NoAction, map: "rutas_zonas_seguras_fk")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model spatial_ref_sys {
+  srid      Int     @id
+  auth_name String? @db.VarChar(256)
+  auth_srid Int?
+  srtext    String? @db.VarChar(2048)
+  proj4text String? @db.VarChar(2048)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ubicaciones_tiempo_real {
+  id_posicion                   Int                      @id
+  geom                          Unsupported("geometry")?
+  fecha_hora                    DateTime?                @default(now()) @db.Timestamptz(6)
+  usuarios_id_usuario           Int
+  zona_inundacion_id_inundacion String                   @db.VarChar(50)
+  zona_inundacion               zona_inundacion          @relation(fields: [zona_inundacion_id_inundacion], references: [id_inundacion], onDelete: NoAction, onUpdate: NoAction, map: "ubicaciones_inundacion_fk")
+  usuarios                      usuarios                 @relation(fields: [usuarios_id_usuario], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction, map: "ubicaciones_usuarios_fk")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model usuarios {
+  id_usuario              Int                       @id
+  nombre                  String?                   @db.VarChar(100)
+  autenticacion           autenticacion[]
+  rutas                   rutas[]
+  ubicaciones_tiempo_real ubicaciones_tiempo_real[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model zona_inundacion {
+  id_inundacion           String                    @id @db.VarChar(50)
+  cota                    Decimal?                  @db.Decimal(5, 1)
+  tipo_riesgo             String?                   @db.VarChar(20)
+  rutas                   rutas[]
+  ubicaciones_tiempo_real ubicaciones_tiempo_real[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model zonas_seguras {
+  id_zona                 String                   @id @db.VarChar(20)
+  geom                    Unsupported("geometry")?
+  nombre                  String?                  @db.VarChar(155)
+  descripcion             String?                  @db.VarChar(500)
+  detalle_zona_id_detalle String                   @db.VarChar(200)
+  rutas                   rutas[]
+  detalle_zona            detalle_zona             @relation(fields: [detalle_zona_id_detalle], references: [id_detalle], onDelete: NoAction, onUpdate: NoAction, map: "zonas_seguras_detalle_fk")
+}
