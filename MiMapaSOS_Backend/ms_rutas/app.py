@@ -17,7 +17,7 @@ engine = None
 def cargar_mapa():
     global G, engine
     try:
-        print("grafo Valparaido cargando...")
+        print("grafo Valparaiso cargando...")
         # Centro en Valparaíso (Plaza Sotomayor aprox)
         G = ox.graph_from_point((-33.045, -71.615), dist=5000, network_type="all")
         
@@ -84,6 +84,15 @@ async def calcular():
         # Velocidad de caminata en emergencia aprox 1.1 m/s
         tiempo_min = round((distancia / 1.1) / 60, 1) 
 
+        # --- TRADUCCIÓN DE NODOS A COORDENADAS PARA FLUTTER ---
+        # Extraemos la Lat/Lon real de cada nodo matemático
+        trazado_coordenadas = []
+        for nodo in ruta_nodos:
+            lat = G.nodes[nodo]['lat']
+            lng = G.nodes[nodo]['lon']
+            trazado_coordenadas.append({"lat": lat, "lng": lng})
+        # ------------------------------------------------------
+
         # persistencia de la ruta en base de datos
         dao = RutaDAO()
         id_ruta = f"RT-{str(uuid.uuid4())[:8].upper()}"
@@ -93,7 +102,7 @@ async def calcular():
             id_ruta, 
             distancia, 
             tiempo_min, 
-            ruta_nodos, 
+            ruta_nodos, # Guardamos los IDs enteros en la DB relacional por eficiencia
             int(id_user), 
             str(id_zona), 
             str(id_alerta)
@@ -106,7 +115,8 @@ async def calcular():
             "id_zona_destino": id_zona,
             "distancia_m": round(distancia, 2),
             "tiempo_estimado_min": tiempo_min,
-            "trazado_nodos": ruta_nodos
+            # Enviamos a Flutter el array de coordenadas GPS reales
+            "trazado_nodos": trazado_coordenadas
         }), 200
 
     except Exception as e:
@@ -114,4 +124,4 @@ async def calcular():
         return jsonify({"error": "Fallo interno en el motor de rutas."}), 500
 
 if __name__ == "__main__":
-    app.run(port=5003, debug=False)
+    app.run(host='0.0.0.0', port=5003, debug=False)
