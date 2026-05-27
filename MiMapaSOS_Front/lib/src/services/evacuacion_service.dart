@@ -23,29 +23,26 @@ class EvacuacionService {
         '&id_zona=ZS-VALPO-01'
     );
 
-    try {
-      print("Solicitando ruta al backend de Python: $url");
+try {
       final response = await http.get(url).timeout(const Duration(seconds: 15));
+      
+      // DEBUGEA AQUÍ: Esto imprimirá en la consola de VS Code qué respondió exactamente Python
+      print("Respuesta del servidor: ${response.body}");
 
       if (response.statusCode == 200) {
         final decodedData = json.decode(response.body);
-        
-        // Extraemos la lista de coordenadas que nos mandó Python
         final List<dynamic> nodos = decodedData['trazado_nodos'];
         
-        // La transformamos en objetos LatLng para el mapa de Flutter
-        List<LatLng> rutaFinal = nodos.map((nodo) {
-          return LatLng(nodo['lat'], nodo['lng']);
+        return nodos.map((nodo) {
+          return LatLng(nodo['lat'].toDouble(), nodo['lng'].toDouble());
         }).toList();
-
-        return rutaFinal;
       } else {
-        print("Error del servidor: ${response.body}");
+        print("Backend falló con código ${response.statusCode}");
         return [];
       }
     } catch (e) {
-      print("Error de conexión con el backend: $e");
-      return []; // Si hay error, devolvemos una lista vacía para no colapsar la app
+      print("ERROR TOTAL: $e"); // ESTO ES LO QUE QUIERO QUE ME COPIES Y PEGUEN AQUÍ
+      return [];
     }
   }
 }

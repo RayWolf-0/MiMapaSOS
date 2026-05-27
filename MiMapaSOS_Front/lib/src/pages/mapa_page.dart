@@ -372,45 +372,79 @@ class _MapaPageState extends State<MapaPage> {
                               )
                             );
 
-                            LatLng puntoDePartida = _pinSimulacion ?? _ubicacionActual ?? const LatLng(-33.045, -71.615);
-                            LatLng puntoDestino = const LatLng(-33.035, -71.625); // Tu zona segura fija
-                            
-                            // 2. CONEXIÓN AL BACKEND
-                            final servicio = EvacuacionService();
-                            List<LatLng> rutaCalculada = await servicio.obtenerRuta(
-                              origen: puntoDePartida,
-                              destinoSeguro: puntoDestino
-                            );
+                            try {
+                              LatLng puntoDePartida = _pinSimulacion ?? _ubicacionActual ?? const LatLng(-33.045, -71.615);
+                              
+                              // --- NUEVA LÓGICA INTELIGENTE DE DESTINO (ZONA MÁS CERCANA) ---
+                              // Añade todas tus zonas de la BD aquí
+                              final List<LatLng> zonasSeguras = [
+                                const LatLng(-33.0180, -71.5380), // Quinta Vergara
+                                const LatLng(-33.0480, -71.6260), // Cerro Alegre
+                                const LatLng(-33.0415, -71.6030), // Mirador Barón
+                              ];
 
-                            // Validar si el backend falló o la IP está mal
-                            if (rutaCalculada.isEmpty) {
+                              LatLng puntoDestino = zonasSeguras.first;
+                              double distanciaMinima = double.infinity;
+
+                              for (var zona in zonasSeguras) {
+                                double distancia = Geolocator.distanceBetween(
+                                  puntoDePartida.latitude, puntoDePartida.longitude,
+                                  zona.latitude, zona.longitude
+                                );
+                                if (distancia < distanciaMinima) {
+                                  distanciaMinima = distancia;
+                                  puntoDestino = zona;
+                                }
+                              }
+                              // -------------------------------------------------------------
+                              
+                              // 2. CONEXIÓN AL BACKEND
+                              final servicio = EvacuacionService();
+                              List<LatLng> rutaCalculada = await servicio.obtenerRuta(
+                                origen: puntoDePartida,
+                                destinoSeguro: puntoDestino
+                              );
+
+                              // Validar si el backend falló o la IP está mal
+                              if (rutaCalculada.isEmpty) {
+                                if(context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error al conectar con el motor de rutas. Revisa tu backend y la IP.', style: TextStyle(fontFamily: _mainFont)), 
+                                      backgroundColor: Colors.red
+                                    )
+                                  );
+                                }
+                                return; // Detenemos la función si no hay ruta
+                              }
+
+                              // 3. MAGIA OFFLINE CON HIVE
+                              var box = Hive.box('emergenciaBox');
+                              
+                              List<Map<String, double>> rutaParaGuardar = rutaCalculada.map((nodo) => {
+                                'lat': nodo.latitude,
+                                'lng': nodo.longitude
+                              }).toList();
+                              
+                              box.put('ultimaRuta', rutaParaGuardar);
+
+                              // 4. Continuar el flujo hacia la alerta roja
+                              if(context.mounted) {
+                                Navigator.push(
+                                  context, 
+                                  MaterialPageRoute(builder: (context) => AlertaPage(rutaSimulada: rutaCalculada))
+                                );
+                              }
+                            } catch (e) {
+                              // Manejo de errores para evitar cálculos erróneos o caídas
                               if(context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text('Error al conectar con el motor de rutas. Revisa tu backend y la IP.', style: TextStyle(fontFamily: _mainFont)), 
+                                    content: Text('Error en el cálculo: $e', style: TextStyle(fontFamily: _mainFont)), 
                                     backgroundColor: Colors.red
                                   )
                                 );
                               }
-                              return; // Detenemos la función si no hay ruta
-                            }
-
-                            // 3. MAGIA OFFLINE CON HIVE
-                            var box = Hive.box('emergenciaBox');
-                            
-                            List<Map<String, double>> rutaParaGuardar = rutaCalculada.map((nodo) => {
-                              'lat': nodo.latitude,
-                              'lng': nodo.longitude
-                            }).toList();
-                            
-                            box.put('ultimaRuta', rutaParaGuardar);
-
-                            // 4. Continuar el flujo hacia la alerta roja
-                            if(context.mounted) {
-                              Navigator.push(
-                                context, 
-                                MaterialPageRoute(builder: (context) => AlertaPage(rutaSimulada: rutaCalculada))
-                              );
                             }
                           },
                           icon: const Icon(Icons.warning_rounded, size: 28),

@@ -8,14 +8,16 @@ class RutaDAO:
         """
         try:
             db = await get_db()
-
             
+            # Convertimos la lista de nodos a lista de enteros estándar para evitar errores de serialización
+            nodos_limpios = [int(n) for n in nodos]
+
             await db.rutas.create(
                 data={
                     'id_ruta': str(id_ruta),
                     'distancia_metros': float(distancia),
                     'tiempo_estimado': int(tiempo),
-                    'trazado': json.dumps(nodos), 
+                    'trazado': json.dumps(nodos_limpios), 
                     'usuarios_id_usuario': int(id_usuario),
                     'zonas_seguras_id_zona': str(id_zona),
                     'alertas_tsunami_id_alerta': str(id_alerta),

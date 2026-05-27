@@ -17,9 +17,9 @@ engine = None
 def cargar_mapa():
     global G, engine
     try:
-        print("grafo Valparaiso cargando...")
-        # Centro en Valparaíso (Plaza Sotomayor aprox)
-        G = ox.graph_from_point((-33.045, -71.615), dist=5000, network_type="all")
+        print("Cargando mega-grafo de Valparaíso y Viña del Mar...")
+        # Radio de 8km centrado entre ambas ciudades
+        G = ox.graph_from_point((-33.030, -71.580), dist=8000, network_type="all")
         
         if not G.is_directed():
             G = G.to_directed()
@@ -29,10 +29,10 @@ def cargar_mapa():
         
         G = ox.projection.project_graph(G)
         engine = EvacuacionEngine(G)
-        print("motor de evacuacion en funcionamiento-")
+        print("Motor de evacuación en funcionamiento.")
         
     except Exception as e:
-        print(f"error al cargar el mapa: {e} ---")
+        print(f"Error al cargar el mapa: {e} ---")
 
 cargar_mapa()
 
@@ -42,7 +42,7 @@ async def calcular():
         return jsonify({"error": "Servicio de mapas no operativo."}), 503
 
     try:
-        # 1. PARÁMETROS DE ENTRADA 
+        # 1. PARÁMETROS
         u_lat = request.args.get('lat')
         u_lon = request.args.get('lon')
         id_user = request.args.get('id_usuario')
@@ -51,17 +51,13 @@ async def calcular():
         dest_lat = request.args.get('dest_lat')   
         dest_lon = request.args.get('dest_lon')   
 
-        # emergencias
         if not all([u_lat, u_lon, id_user, id_alerta, id_zona, dest_lat, dest_lon]):
-            return jsonify({
-                "error": "Faltan parámetros críticos para la evacuación.",
-                "detalles": "Se requiere ubicación actual, destino y vinculación a una alerta activa."
-            }), 400
+            return jsonify({"error": "Faltan parámetros críticos."}), 400
 
         u_lat, u_lon = float(u_lat), float(u_lon)
         dest_lat, dest_lon = float(dest_lat), float(dest_lon)
 
-        # nodos
+        # 2. NODOS (Proyección correcta)
         transformer = Transformer.from_crs("epsg:4326", G.graph['crs'], always_xy=True)
         orig_x, orig_y = transformer.transform(u_lon, u_lat)
         dest_x, dest_y = transformer.transform(dest_lon, dest_lat)
@@ -69,58 +65,64 @@ async def calcular():
         orig_node = ox.distance.nearest_nodes(G, X=orig_x, Y=orig_y)
         dest_node = ox.distance.nearest_nodes(G, X=dest_x, Y=dest_y)
 
-        # calculo ACO + dijkstra
         ruta_nodos = engine.calcular_ruta(orig_node, dest_node)
 
         if not ruta_nodos:
-            return jsonify({"error": "No se encontró una ruta segura al refugio."}), 404
+            return jsonify({"error": "No se encontró una ruta segura."}), 404
 
-        # metricas
-        distancia = 0.0
-        for u, v in zip(ruta_nodos[:-1], ruta_nodos[1:]):
-            edge_data = G.get_edge_data(u, v)
-            distancia += min(d['length'] for d in edge_data.values())
-        
-        # Velocidad de caminata en emergencia aprox 1.1 m/s
+        # 3. MÉTRICAS
+        distancia = sum(G[u][v][0].get('length', 0) for u, v in zip(ruta_nodos[:-1], ruta_nodos[1:]))
         tiempo_min = round((distancia / 1.1) / 60, 1) 
 
-        # --- TRADUCCIÓN DE NODOS A COORDENADAS PARA FLUTTER ---
-        # Extraemos la Lat/Lon real de cada nodo matemático
+        # 4. TRANSFORMACIÓN INVERSA (Extracción de geometría de calles)
         trazado_coordenadas = []
-        for nodo in ruta_nodos:
-            lat = G.nodes[nodo]['lat']
-            lng = G.nodes[nodo]['lon']
-            trazado_coordenadas.append({"lat": lat, "lng": lng})
-        # ------------------------------------------------------
+        inv_transformer = Transformer.from_crs(G.graph['crs'], "epsg:4326", always_xy=True)
+        
+        for u, v in zip(ruta_nodos[:-1], ruta_nodos[1:]):
+            edge_data = G.get_edge_data(u, v)
+            if edge_data:
+                # Tomamos la arista más corta en caso de haber múltiples caminos (multigrafo)
+                data = min(edge_data.values(), key=lambda d: d.get('length', 1))
+                
+                if 'geometry' in data:
+                    # Extraemos los puntos intermedios para dibujar curvas correctamente
+                    for x, y in data['geometry'].coords:
+                        lng, lat = inv_transformer.transform(x, y)
+                        trazado_coordenadas.append({"lat": float(lat), "lng": float(lng)})
+                else:
+                    # Línea recta sin geometría extra
+                    x, y = G.nodes[u]['x'], G.nodes[u]['y']
+                    lng, lat = inv_transformer.transform(x, y)
+                    trazado_coordenadas.append({"lat": float(lat), "lng": float(lng)})
 
-        # persistencia de la ruta en base de datos
+        # Añadir el destino final explícitamente para cerrar la línea
+        ultimo_nodo = ruta_nodos[-1]
+        x_ult, y_ult = G.nodes[ultimo_nodo]['x'], G.nodes[ultimo_nodo]['y']
+        lng_ult, lat_ult = inv_transformer.transform(x_ult, y_ult)
+        trazado_coordenadas.append({"lat": float(lat_ult), "lng": float(lng_ult)})
+
+        # 5. PERSISTENCIA
         dao = RutaDAO()
         id_ruta = f"RT-{str(uuid.uuid4())[:8].upper()}"
         
-        # base de datos
-        exito_db = await dao.guardar_ruta(
-            id_ruta, 
-            distancia, 
-            tiempo_min, 
-            ruta_nodos, # Guardamos los IDs enteros en la DB relacional por eficiencia
-            int(id_user), 
-            str(id_zona), 
-            str(id_alerta)
-        )
+        try:
+            exito_db = await dao.guardar_ruta(
+                id_ruta, distancia, tiempo_min, ruta_nodos, 
+                int(id_user), str(id_zona), str(id_alerta)
+            )
+        except Exception:
+            exito_db = False
 
         return jsonify({
-            "status": "RUTA DE EVACUACIÓN GENERADA" if exito_db else "RUTA GENERADA (ERROR DE PERSISTENCIA)",
+            "status": "RUTA GENERADA" if exito_db else "ERROR DE PERSISTENCIA",
             "id_ruta": id_ruta,
-            "id_alerta_vinculada": id_alerta,
-            "id_zona_destino": id_zona,
             "distancia_m": round(distancia, 2),
             "tiempo_estimado_min": tiempo_min,
-            # Enviamos a Flutter el array de coordenadas GPS reales
             "trazado_nodos": trazado_coordenadas
         }), 200
 
     except Exception as e:
-        print(f"Error en el proceso de rutas: {e}")
+        print(f"Error interno: {e}")
         return jsonify({"error": "Fallo interno en el motor de rutas."}), 500
 
 if __name__ == "__main__":
