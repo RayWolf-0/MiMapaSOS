@@ -26,7 +26,7 @@ class _RutaPageState extends State<RutaPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text("Ruta de Evacuación", style: TextStyle(fontFamily: _mainFont, fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1E293B), // Dark Blue Geocientífico
+        backgroundColor: const Color(0xFF1E293B),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -45,7 +45,7 @@ class _RutaPageState extends State<RutaPage> {
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'cl.duoc.mimapasos.lylo',
                 ),
-                // Aquí se dibuja mágicamente la línea enviada desde la alerta
+                // se dibuja la linea de la ruta con un color distintivo y un grosor adecuado para resaltarla ruta en el mapa
                 PolylineLayer(
                   polylines: [
                     Polyline(

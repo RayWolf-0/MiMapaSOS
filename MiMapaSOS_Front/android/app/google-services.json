@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1033944391120",
+    "project_id": "mimapasos",
+    "storage_bucket": "mimapasos.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1033944391120:android:5bc63103cb0d535910edd5",
+        "android_client_info": {
+          "package_name": "cl.duoc.mimapasos.lylo"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1033944391120-0639b58u7ustnhbsd5jlro3bk9sfsgph.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "cl.duoc.mimapasos.lylo",
+            "certificate_hash": "c1fb39ef3dea428b7221b3593f6dbd9da8766711"
+          }
+        },
+        {
+          "client_id": "1033944391120-6jp2pjgh0uricvohg8rth2vpj5dud27a.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCHDI6UqhJ-MTn7_Vae65mahe3RICXnSmQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1033944391120-6jp2pjgh0uricvohg8rth2vpj5dud27a.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

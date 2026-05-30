@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../services/evacuacion_service.dart';
 import 'dart:ui';
 import 'alerta_page.dart';
+import 'perfil_page.dart'; 
 
 class MapaPage extends StatefulWidget {
   const MapaPage({super.key});
@@ -71,7 +72,7 @@ class _MapaPageState extends State<MapaPage> {
     });
   }
 
-  // Ampliamos la caja matemática para incluir Viña del Mar (Avenida San Martín)
+  // viña del mar
   void _colocarPinSimulacion(LatLng punto) {
     bool esCostaValpoVina = punto.latitude >= -33.10 && punto.latitude <= -32.95 &&
                             punto.longitude >= -71.68 && punto.longitude <= -71.50;
@@ -80,7 +81,7 @@ class _MapaPageState extends State<MapaPage> {
       setState(() {
         _pinSimulacion = punto;
       });
-      // Movemos la cámara al punto suavemente
+      // camara
       _mapController.move(punto, 16.5);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -161,7 +162,7 @@ class _MapaPageState extends State<MapaPage> {
               ],
             ),
 
-          // --- 2. BARRA SUPERIOR (Glassmorphism) ---
+          // barra superior
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -203,14 +204,33 @@ class _MapaPageState extends State<MapaPage> {
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: Colors.white.withOpacity(0.4)),
                         ),
+                        
+                        // menu
                         child: PopupMenuButton<String>(
                           icon: const Icon(Icons.menu, color: Color(0xFF2E4D68)),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                           color: Colors.white,
+                          onSelected: (String value) {
+                            if (value == 'perfil') {
+                              Navigator.push(
+                                context, 
+                                MaterialPageRoute(builder: (context) => const PerfilPage())
+                              );
+                            } else {
+                              // Feedback para las opciones no terminadas
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Función en desarrollo...', style: TextStyle(fontFamily: _mainFont)),
+                                  backgroundColor: const Color(0xFF2E4D68),
+                                  duration: const Duration(seconds: 1),
+                                )
+                              );
+                            }
+                          },
                           itemBuilder: (BuildContext context) => [
                             PopupMenuItem(value: 'perfil', child: Text('Perfil', style: TextStyle(fontFamily: _mainFont))),
-                            PopupMenuItem(value: 'regiones', child: Text('Regiones', style: TextStyle(fontFamily: _mainFont))),
-                            PopupMenuItem(value: 'actividad', child: Text('Actividad Sísmica', style: TextStyle(fontFamily: _mainFont))),
+                            PopupMenuItem(value: 'regiones', child: Text('Regiones (próximamente)', style: TextStyle(fontFamily: _mainFont))),
+                            PopupMenuItem(value: 'actividad', child: Text('Actividad Sísmica (próximamente)', style: TextStyle(fontFamily: _mainFont))),
                           ],
                         ),
                       ),
@@ -221,7 +241,7 @@ class _MapaPageState extends State<MapaPage> {
             ),
           ),
 
-          // --- 3. PANEL INFERIOR DINÁMICO ---
+          // panel dinamico
           DraggableScrollableSheet(
             initialChildSize: 0.42, 
             minChildSize: 0.30,
@@ -261,7 +281,7 @@ class _MapaPageState extends State<MapaPage> {
                               children: [
                                 const Icon(Icons.check_circle, color: Color(0xFFA5D6A7), size: 14),
                                 const SizedBox(width: 5),
-                                Text("Litoral Seguro", style: TextStyle(fontFamily: _mainFont, fontSize: 12, color: Color(0xFFA5D6A7), fontWeight: FontWeight.bold)),
+                                Text("Litoral Seguro", style: TextStyle(fontFamily: _mainFont, fontSize: 12, color: const Color(0xFFA5D6A7), fontWeight: FontWeight.bold)),
                               ],
                             ),
                           )
@@ -269,7 +289,7 @@ class _MapaPageState extends State<MapaPage> {
                       ),
                       const SizedBox(height: 15),
 
-                      // TARJETA 1: Información SHOA
+                      // shoa
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
@@ -350,7 +370,7 @@ class _MapaPageState extends State<MapaPage> {
                       ),
                       const SizedBox(height: 25),
                       
-                      // 🚨 BOTÓN DE EVACUACIÓN (Lanza el cálculo real y guarda offline) 🚨
+                      // hace el calculo y lo guarda en hive
                       SizedBox(
                         width: double.infinity,
                         height: 60,
@@ -363,7 +383,7 @@ class _MapaPageState extends State<MapaPage> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                           ),
                           onPressed: () async {
-                            // 1. Mostrar feedback visual al usuario de que está cargando
+                            // cargando
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text('Calculando ruta segura con Dijkstra...', style: TextStyle(fontFamily: _mainFont)), 
@@ -375,8 +395,7 @@ class _MapaPageState extends State<MapaPage> {
                             try {
                               LatLng puntoDePartida = _pinSimulacion ?? _ubicacionActual ?? const LatLng(-33.045, -71.615);
                               
-                              // --- NUEVA LÓGICA INTELIGENTE DE DESTINO (ZONA MÁS CERCANA) ---
-                              // Añade todas tus zonas de la BD aquí
+                              // --- elige ruta mas cercana---
                               final List<LatLng> zonasSeguras = [
                                 const LatLng(-33.0180, -71.5380), // Quinta Vergara
                                 const LatLng(-33.0480, -71.6260), // Cerro Alegre
@@ -396,7 +415,7 @@ class _MapaPageState extends State<MapaPage> {
                                   puntoDestino = zona;
                                 }
                               }
-                              // -------------------------------------------------------------
+                              // --------------------separando-----------------------------------------
                               
                               // 2. CONEXIÓN AL BACKEND
                               final servicio = EvacuacionService();
@@ -418,7 +437,7 @@ class _MapaPageState extends State<MapaPage> {
                                 return; // Detenemos la función si no hay ruta
                               }
 
-                              // 3. MAGIA OFFLINE CON HIVE
+                              // 3. modo offline: Guardar la ruta en Hive para uso futuro sin conexión
                               var box = Hive.box('emergenciaBox');
                               
                               List<Map<String, double>> rutaParaGuardar = rutaCalculada.map((nodo) => {
@@ -436,7 +455,7 @@ class _MapaPageState extends State<MapaPage> {
                                 );
                               }
                             } catch (e) {
-                              // Manejo de errores para evitar cálculos erróneos o caídas
+                              // Manejo de errores
                               if(context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(

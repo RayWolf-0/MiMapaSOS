@@ -1,4 +1,4 @@
-package com.example.mimapasosfront
+package cl.duoc.mimapasos.lylo
 
 import io.flutter.embedding.android.FlutterActivity
 

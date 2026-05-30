@@ -7,7 +7,7 @@ app = Flask(__name__)
 dao = UsuarioDAO()
 
 # google id
-GOOGLE_CLIENT_ID = "TU_CLIENT_ID_AQUI.apps.googleusercontent.com"
+GOOGLE_CLIENT_ID = "1033944391120-6jp2pjgh0uricvohg8rth2vpj5dud27a.apps.googleusercontent.com"
 
 @app.route('/auth/google', methods=['POST'])
 async def login_google(): # <--- AGREGAR ASYNC
