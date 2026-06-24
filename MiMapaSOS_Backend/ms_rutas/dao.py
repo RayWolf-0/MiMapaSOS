@@ -3,13 +3,11 @@ import json
 
 class RutaDAO:
     async def guardar_ruta(self, id_ruta, distancia, tiempo, nodos, id_usuario, id_zona, id_alerta, id_inundacion="ZI-PLAN-VAP-01"):
-        """
-        Guarda la ruta calculada en Supabase usando Prisma.
-        """
+        # guarda la ruta calculada en supabase usando prisma.
         try:
             db = await get_db()
             
-            # Convertimos la lista de nodos a lista de enteros estándar para evitar errores de serialización
+            # convertimos la lista de nodos a lista de enteros estandar para evitar errores de serializacion
             nodos_limpios = [int(n) for n in nodos]
 
             await db.rutas.create(
@@ -25,9 +23,9 @@ class RutaDAO:
                 }
             )
 
-            print(f"--- Ruta {id_ruta} persistida exitosamente con Prisma ---")
+            print(f"--- ruta {id_ruta} persistida exitosamente con prisma ---")
             return True
 
         except Exception as e:
-            print(f"Error crítico en RutaDAO: {e}")
+            print(f"error critico en rutadao: {e}")
             return False

@@ -69,7 +69,7 @@ class _LoginPageState extends State<LoginPage> {
       if (idToken != null) {
         //token
         final response = await http.post(
-          Uri.parse('http://10.55.139.163:5001/auth/google'),
+          Uri.parse('http://10.223.8.163:5001/auth/google'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'token': idToken}),
         );

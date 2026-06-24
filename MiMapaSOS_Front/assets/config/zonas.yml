@@ -1,0 +1,50 @@
+zonas_seguras:
+  # Zona de Viña del Mar
+  - nombre: "Quinta Vergara (Anfiteatro)"
+    lat: -33.0270
+    lng: -71.5505
+    
+  - nombre: "Estadio Sausalito"
+    lat: -33.0085
+    lng: -71.5475
+    
+  - nombre: "Cerro Castillo (Palacio)"
+    lat: -33.0195
+    lng: -71.5580
+    
+  - nombre: "Santa Inés (Sector Alto)"
+    lat: -33.0040
+    lng: -71.5410
+    
+  - nombre: "Valparaíso Sporting Club"
+    lat: -33.0260
+    lng: -71.5360
+    
+  - nombre: "Mirador Gómez Carreño"
+    lat: -32.9980
+    lng: -71.5300
+
+  # Zonas de Valparaíso
+  - nombre: "Cerro Alegre (Paseo Yugoslavo)"
+    lat: -33.0413
+    lng: -71.6277
+    
+  - nombre: "Mirador Barón"
+    lat: -33.0415
+    lng: -71.6030
+    
+  - nombre: "Plaza Bismarck (Cerro Cárcel)"
+    lat: -33.0458
+    lng: -71.6310
+    
+  - nombre: "Estadio Elías Figueroa (Playa Ancha)"
+    lat: -33.0232
+    lng: -71.6319
+    
+  - nombre: "Ascensor Polanco (Estación Superior)"
+    lat: -33.0495
+    lng: -71.6065
+    
+  - nombre: "Hospital Eduardo Pereira (San Roque)"
+    lat: -33.0550
+    lng: -71.5975
