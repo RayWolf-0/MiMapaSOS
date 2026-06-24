@@ -13,13 +13,15 @@ class EvacuacionEngine:
         feromona = d.get('pheromone', 1.0)
         penalizacion = 1.0
 
-        tipo_via = d.get('highway', '')
-        if isinstance(tipo_via, list):
-            tipo_via = tipo_via[0]
+        tipo_via_raw = d.get('highway', '')
+        # Convertimos siempre a lista para buscar en todas las etiquetas sin perder datos
+        tipos_via = tipo_via_raw if isinstance(tipo_via_raw, list) else [tipo_via_raw]
 
-        # 1. prioridad maxima a escaleras y vias peatonales
+        # 1. prioridad maxima a escaleras, pasarelas y vias peatonales
         # retornamos al tiro para evitar que le afecten los castigos de abajo
-        if tipo_via in ['steps', 'pedestrian', 'footway', 'path']:
+        rutas_peatonales = ['steps', 'pedestrian', 'footway', 'path', 'bridge']
+        if any(tipo in tipos_via for tipo in rutas_peatonales):
+            # Descuento extremo: le decimos a Dijkstra que caminar por aquí "cuesta" un 10% de la distancia real
             return (distancia * 0.1) / feromona 
 
         # preparar nombre de la calle (minusculas, sin tildes)
@@ -42,9 +44,9 @@ class EvacuacionEngine:
             penalizacion *= 10000.0
 
         # nivel 3: calles vehiculares anchas (privilegiamos las más chicas)
-        if tipo_via in ['trunk', 'trunk_link', 'primary', 'primary_link']:
+        if any(tipo in tipos_via for tipo in ['trunk', 'trunk_link', 'primary', 'primary_link']):
             penalizacion *= 5000.0
-        elif tipo_via in ['secondary', 'secondary_link']:
+        elif any(tipo in tipos_via for tipo in ['secondary', 'secondary_link']):
             penalizacion *= 1000.0
 
         # 3. castigo espacial (caja contenedora del plan)

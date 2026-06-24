@@ -19,7 +19,7 @@ def cargar_mapa():
     global G, engine
     try:
         print("cargando mega-grafo de valparaiso y viña del mar...", flush=True)
-        G = ox.graph_from_point((-33.030, -71.580), dist=8000, network_type="all")
+        G = ox.graph_from_point((-33.030, -71.580), dist=8000, network_type="walk", simplify=True)
         
         if not G.is_directed():
             G = G.to_directed()
@@ -70,7 +70,7 @@ async def calcular():
         except Exception as e_db:
             print(f"error de db al cargar zonas: {e_db}. usando salvavidas.", flush=True)
 
-        # salvavidas en duro si falla la base de datos
+        # salvavidas en duro si falla la base de datos (Sincronizado con Cota 30)
         if not zonas_seguras_db:
             zonas_seguras_db = [
                 {"id_zona": "ZS-CERRO-ALEGRE", "lat": -33.0480, "lon": -71.6260, "nombre": "cancha cerro alegre"},
@@ -84,7 +84,16 @@ async def calcular():
                 {"id_zona": "ZS-VAL-POLANCO", "lat": -33.0460, "lon": -71.6050, "nombre": "ascensor polanco"},
                 {"id_zona": "ZS-VAL-BDO_OHIGGINS", "lat": -33.0500, "lon": -71.6150, "nombre": "plaza washington"},
                 {"id_zona": "ZS-VAL-ADUANA", "lat": -33.0330, "lon": -71.6280, "nombre": "cerro artilleria"},
-                {"id_zona": "ZS-VINA-NORTE", "lat": -33.0040, "lon": -71.5430, "nombre": "santa ines"}
+                {"id_zona": "ZS-VINA-NORTE", "lat": -33.0040, "lon": -71.5430, "nombre": "santa ines"},
+                
+                # Nuevos puntos fronterizos discretos de la Cota 30
+                {"id_zona": "ZS-COTA30-RECREO", "lat": -33.0280, "lon": -71.5670, "nombre": "límite cota 30 recreo"},
+                {"id_zona": "ZS-COTA30-AGUASANTA", "lat": -33.0250, "lon": -71.5580, "nombre": "límite cota 30 agua santa"},
+                {"id_zona": "ZS-COTA30-CHORRILLOS", "lat": -33.0210, "lon": -71.5420, "nombre": "límite cota 30 chorrillos"},
+                {"id_zona": "ZS-COTA30-MIRAFLORES", "lat": -33.0120, "lon": -71.5350, "nombre": "límite cota 30 miraflores"},
+                {"id_zona": "ZS-COTA30-BARON", "lat": -33.0400, "lon": -71.6020, "nombre": "límite cota 30 cerro baron"},
+                {"id_zona": "ZS-COTA30-CARCEL", "lat": -33.0450, "lon": -71.6180, "nombre": "límite cota 30 cerro carcel"},
+                {"id_zona": "ZS-COTA30-ARTILLERIA", "lat": -33.0360, "lon": -71.6300, "nombre": "límite cota 30 cerro artilleria"}
             ]
 
         transformer = Transformer.from_crs("epsg:4326", G.graph['crs'], always_xy=True)
