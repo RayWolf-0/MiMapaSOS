@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter/services.dart' show rootBundle; 
 import 'package:yaml/yaml.dart'; 
+import 'package:firebase_auth/firebase_auth.dart'; 
 import '../services/evacuacion_service.dart';
 import 'dart:ui';
 import 'alerta_page.dart';
@@ -24,11 +25,131 @@ class _MapaPageState extends State<MapaPage> {
   LatLng? _ubicacionActual;
   LatLng? _pinSimulacion;
   bool _buscandoGPS = true;
+  List<CircleMarker> _circulosZonasSeguras = [];
+  
+  String _nombreUsuario = 'usuario'; 
 
   @override
   void initState() {
     super.initState();
+    _cargarUsuario();
     _determinarUbicacion();
+    _cargarPerimetrosVisuales();
+  }
+
+  void _cargarUsuario() {
+    try {
+      final User? userCache = FirebaseAuth.instance.currentUser;
+      if (userCache != null) {
+        if (userCache.displayName != null && userCache.displayName!.trim().isNotEmpty) {
+          _nombreUsuario = userCache.displayName!.trim().split(' ')[0].toLowerCase();
+        } else if (userCache.email != null) {
+          _nombreUsuario = userCache.email!.split('@')[0].toLowerCase(); 
+        }
+      }
+
+      FirebaseAuth.instance.authStateChanges().listen((User? user) {
+        if (mounted) {
+          setState(() {
+            if (user != null) {
+              if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
+                _nombreUsuario = user.displayName!.trim().split(' ')[0].toLowerCase();
+              } else if (user.email != null) {
+                _nombreUsuario = user.email!.split('@')[0].toLowerCase(); 
+              }
+            } else {
+              _nombreUsuario = 'usuario'; 
+            }
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint("No se pudo cargar la sesión de Auth: $e");
+    }
+  }
+
+  Future<void> _cargarPerimetrosVisuales() async {
+    try {
+      final String yamlString = await rootBundle.loadString('assets/config/zonas.yml');
+      final YamlMap yamlData = loadYaml(yamlString);
+      final List<CircleMarker> listaTemporal = [];
+      
+      for (var zona in yamlData['zonas_seguras']) {
+        final String idZona = (zona['id'] ?? zona['id_zona'] ?? '').toString().toUpperCase();
+        final double lat = double.parse(zona['lat'].toString());
+        final double lng = double.parse(zona['lng'].toString());
+        
+        bool esCota30 = idZona.contains('COTA30');
+
+        if (!esCota30 && lat > -33.030 && lat < -33.000 && lng < -71.545) {
+          continue; 
+        }
+
+        listaTemporal.add(
+          CircleMarker(
+            point: LatLng(lat, lng),
+            radius: esCota30 ? 120 : 400, 
+            useRadiusInMeter: true,
+            color: esCota30 
+                ? const Color(0xFF0288D1).withOpacity(0.06) 
+                : const Color(0xFF4CAF50).withOpacity(0.12),
+            borderColor: esCota30 
+                ? const Color(0xFF29B6F6).withOpacity(0.25) 
+                : const Color(0xFF81C784).withOpacity(0.35),
+            borderStrokeWidth: 2.0,
+          )
+        );
+      }
+      setState(() {
+        _circulosZonasSeguras = listaTemporal;
+      });
+    } catch (e) {
+      debugPrint("Error al inicializar perímetros visuales: $e");
+    }
+  }
+
+  // Polígono relajado: desplazado mar adentro para asegurar que toda la tierra sea clickeable
+  bool _esMar(LatLng punto) {
+    double x = punto.longitude;
+    double y = punto.latitude;
+
+    List<LatLng> poligonoMar = [
+      const LatLng(-33.150, -71.750), 
+      const LatLng(-32.900, -71.750), 
+      const LatLng(-32.900, -71.550), // Margen norte empujado al oeste
+      const LatLng(-32.980, -71.550), // Margen Reñaca
+      const LatLng(-32.995, -71.552), // Margen Las Salinas
+      const LatLng(-33.008, -71.558), // Margen Muelle Vergara
+      const LatLng(-33.016, -71.565), // Margen Av. Perú
+      const LatLng(-33.022, -71.575), // Margen Capuchinos
+      const LatLng(-33.024, -71.580), // Margen Caleta Abarca
+      const LatLng(-33.031, -71.595), // Margen Av España/Portales
+      const LatLng(-33.039, -71.613), // Margen Barón
+      const LatLng(-33.042, -71.623), // Margen Bellavista/Puerto
+      const LatLng(-33.039, -71.635), // Margen Sotomayor
+      const LatLng(-33.034, -71.638), // Margen Molo
+      const LatLng(-33.025, -71.642), // Margen Torpederas
+      const LatLng(-33.070, -71.655), // Margen Sur
+      const LatLng(-33.150, -71.655), 
+    ];
+
+    bool enMar = false;
+    int j = poligonoMar.length - 1;
+
+    for (int i = 0; i < poligonoMar.length; i++) {
+      double xi = poligonoMar[i].longitude;
+      double yi = poligonoMar[i].latitude;
+      double xj = poligonoMar[j].longitude;
+      double yj = poligonoMar[j].latitude;
+
+      bool interseccion = ((yi > y) != (yj > y)) &&
+          (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+          
+      if (interseccion) enMar = !enMar;
+      j = i;
+    }
+
+    return enMar;
   }
 
   Future<void> _determinarUbicacion() async {
@@ -69,20 +190,37 @@ class _MapaPageState extends State<MapaPage> {
 
   void _setUbicacionPorDefecto() {
     setState(() {
-      _ubicacionActual = const LatLng(-33.045, -71.615); // valparaiso
+      _ubicacionActual = const LatLng(-33.045, -71.615); 
       _buscandoGPS = false;
     });
   }
 
-  // centrar mapa en la ubicacion del usuario
   void _centrarMapaEnUsuario() {
     if (_ubicacionActual != null) {
       _mapController.move(_ubicacionActual!, 16.0);
     }
   }
 
-  // logica para limitar el pin de simulacion a viña/valpo
   void _colocarPinSimulacion(LatLng punto) {
+    if (_esMar(punto)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.waves_rounded, color: Colors.white),
+              const SizedBox(width: 10),
+              Text('Imposible evacuar desde el mar. Fija un punto en tierra firme.', 
+                style: TextStyle(fontFamily: _mainFont, fontWeight: FontWeight.bold, fontSize: 13)),
+            ],
+          ),
+          backgroundColor: const Color(0xFFD32F2F),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        )
+      );
+      return;
+    }
+
     bool esCostaValpoVina = punto.latitude >= -33.10 && punto.latitude <= -32.95 &&
                             punto.longitude >= -71.68 && punto.longitude <= -71.50;
 
@@ -94,7 +232,8 @@ class _MapaPageState extends State<MapaPage> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('simulación limitada a la costa de valparaíso/viña.', style: TextStyle(fontFamily: _mainFont, fontWeight: FontWeight.bold)),
+          content: Text('Simulación limitada a la costa de valparaíso/viña.', 
+            style: TextStyle(fontFamily: _mainFont, fontWeight: FontWeight.bold)),
           backgroundColor: const Color(0xFFE57373),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -103,40 +242,49 @@ class _MapaPageState extends State<MapaPage> {
     }
   }
 
-  // logica de evacuacion y validacion cota 30
   Future<void> _ejecutarEvacuacion() async {
-    Navigator.pop(context); // cierra el menu lateral antes de empezar
+    Navigator.pop(context); 
 
     try {
       LatLng puntoDePartida = _pinSimulacion ?? _ubicacionActual ?? const LatLng(-33.045, -71.615);
       
-      // 1. lectura de yml
       final String yamlString = await rootBundle.loadString('assets/config/zonas.yml');
       final YamlMap yamlData = loadYaml(yamlString);
       
-      final List<LatLng> zonasSeguras = [];
+      LatLng puntoDestino = const LatLng(-33.0180, -71.5380);
+      double distanciaMinimaCentroide = double.infinity; 
+      double distanciaMinimaAbsoluta = double.infinity;  
+
       for (var zona in yamlData['zonas_seguras']) {
-        zonasSeguras.add(LatLng(zona['lat'], zona['lng']));
-      }
+        final String idZona = (zona['id'] ?? zona['id_zona'] ?? '').toString().toUpperCase();
+        final double lat = double.parse(zona['lat'].toString());
+        final double lng = double.parse(zona['lng'].toString());
+        final LatLng puntoZona = LatLng(lat, lng);
 
-      // 2. encontrar la zona segura mas cercana por distancia real
-      LatLng puntoDestino = zonasSeguras.first;
-      double distanciaMinima = double.infinity;
+        bool esCota30 = idZona.contains('COTA30');
 
-      for (var zona in zonasSeguras) {
+        if (!esCota30 && lat > -33.030 && lat < -33.000 && lng < -71.545) {
+          continue; 
+        }
+
         double distancia = Geolocator.distanceBetween(
           puntoDePartida.latitude, puntoDePartida.longitude,
-          zona.latitude, zona.longitude
+          puntoZona.latitude, puntoZona.longitude
         );
         
-        if (distancia < distanciaMinima) {
-          distanciaMinima = distancia;
-          puntoDestino = zona;
+        if (distancia < distanciaMinimaAbsoluta) {
+          distanciaMinimaAbsoluta = distancia;
+          puntoDestino = puntoZona;
+        }
+
+        if (!esCota30) {
+          if (distancia < distanciaMinimaCentroide) {
+            distanciaMinimaCentroide = distancia;
+          }
         }
       }
       
-      // 3. validacion: esta sobre la cota 30?
-      if (distanciaMinima <= 400) {
+      if (distanciaMinimaCentroide <= 400) {
         if (context.mounted) {
           showDialog(
             context: context,
@@ -162,10 +310,9 @@ class _MapaPageState extends State<MapaPage> {
             )
           );
         }
-        return; // detenemos la funcion
+        return; 
       }
 
-      // 4. mostramos feedback de carga
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -176,7 +323,6 @@ class _MapaPageState extends State<MapaPage> {
         );
       }
 
-      // 5. conexion al motor backend
       final servicio = EvacuacionService();
       List<LatLng> rutaCalculada = await servicio.obtenerRuta(
         origen: puntoDePartida,
@@ -195,7 +341,6 @@ class _MapaPageState extends State<MapaPage> {
         return; 
       }
 
-      // 6. guardado offline en hive
       var box = Hive.box('emergenciaBox');
       List<Map<String, double>> rutaParaGuardar = rutaCalculada.map((nodo) => {
         'lat': nodo.latitude,
@@ -203,7 +348,6 @@ class _MapaPageState extends State<MapaPage> {
       }).toList();
       box.put('ultimaRuta', rutaParaGuardar);
 
-      // 7. salto a pantalla de alerta
       if(context.mounted) {
         Navigator.push(
           context, 
@@ -222,9 +366,8 @@ class _MapaPageState extends State<MapaPage> {
     }
   }
 
-  // logica offline
   void _verRutaOffline() {
-    Navigator.pop(context); // cierra el menu lateral
+    Navigator.pop(context); 
 
     var box = Hive.box('emergenciaBox');
     var datosGuardados = box.get('ultimaRuta');
@@ -250,7 +393,6 @@ class _MapaPageState extends State<MapaPage> {
     }
   }
 
-  // helper para mostrar feedback de menus inactivos
   void _mostrarProximamente() {
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -265,7 +407,6 @@ class _MapaPageState extends State<MapaPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // menu lateral
       endDrawer: Drawer(
         backgroundColor: const Color.fromARGB(255, 45, 25, 55), 
         child: SafeArea(
@@ -278,7 +419,12 @@ class _MapaPageState extends State<MapaPage> {
                   children: [
                     const CircleAvatar(radius: 25, backgroundColor: Color(0xFFF48FB1), child: Icon(Icons.person, color: Colors.white, size: 30)),
                     const SizedBox(width: 15),
-                    Text("menú sos", style: TextStyle(fontFamily: _mainFont, fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+                    Expanded(
+                      child: Text("bienvenid@ $_nombreUsuario", 
+                        style: TextStyle(fontFamily: _mainFont, fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -383,10 +529,8 @@ class _MapaPageState extends State<MapaPage> {
         ),
       ),
 
-      // contenido pantalla principal
       body: Stack(
         children: [
-          // mapa
           _buscandoGPS 
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFF48FB1)))
           : FlutterMap(
@@ -400,6 +544,9 @@ class _MapaPageState extends State<MapaPage> {
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'cl.duoc.mimapasos.lylo',
+                ),
+                CircleLayer(
+                  circles: _circulosZonasSeguras,
                 ),
                 MarkerLayer(
                   markers: [
@@ -448,7 +595,6 @@ class _MapaPageState extends State<MapaPage> {
               ],
             ),
 
-          // barra superior
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -474,7 +620,9 @@ class _MapaPageState extends State<MapaPage> {
                               child: Icon(Icons.person, size: 18, color: Colors.white),
                             ),
                             const SizedBox(width: 10),
-                            Text("bienvenid@ lylo", style: TextStyle(fontFamily: _mainFont, fontWeight: FontWeight.bold, fontSize: 16, color: const Color(0xFF2E4D68))),
+                            Text("bienvenid@ $_nombreUsuario", 
+                              style: TextStyle(fontFamily: _mainFont, fontWeight: FontWeight.bold, fontSize: 16, color: const Color(0xFF2E4D68))
+                            ),
                           ],
                         ),
                       ),
@@ -509,9 +657,7 @@ class _MapaPageState extends State<MapaPage> {
             ),
           ),
           
-          // boton de ubicacion flotante
           Positioned(
-            // sube dinamicamente si el recuadro del pin esta activo para no superponerse
             bottom: _pinSimulacion != null ? 100 : 30, 
             right: 20,
             child: FloatingActionButton(
@@ -524,7 +670,6 @@ class _MapaPageState extends State<MapaPage> {
             ),
           ),
 
-          // pin flotante de simulacion
           if (_pinSimulacion != null)
             Positioned(
               bottom: 30,
