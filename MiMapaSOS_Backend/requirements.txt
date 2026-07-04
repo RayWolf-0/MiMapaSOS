@@ -6,3 +6,4 @@ networkx
 osmnx
 google-auth
 pyproj
+scipy

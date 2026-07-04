@@ -73,7 +73,7 @@ class _LoginPageState extends State<LoginPage> {
 
       // 2. Validar con tu backend (se mantiene el flujo original)
       final response = await http.post(
-        Uri.parse('http://54.197.117.21:5001/auth/google'),
+        Uri.parse('http://44.201.86.93:5001/auth/google'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'token': idToken}),
       );
