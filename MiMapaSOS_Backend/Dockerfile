@@ -2,12 +2,12 @@
 FROM python:3.10-slim
 
 # Install system dependencies, including Node.js for Prisma
-RUN apt-get update && apt-get install -y "
-    curl "
-    build-essential "
-    libpq-dev "
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - "
-    && apt-get install -y nodejs "
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    libpq-dev \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -29,9 +29,9 @@ COPY . .
 RUN DATABASE_URL="postgresql://dummy:dummy@dummy:5432/dummy" prisma generate
 
 # Create Linux Procfile for Honcho
-RUN echo "usuarios: PYTHONPATH=. python ms_usuarios/app.py
-alertas: PYTHONPATH=. python ms_alertas/app.py
-rutas: PYTHONPATH=. python ms_rutas/app.py
+RUN echo "usuarios: PYTHONPATH=. python ms_usuarios/app.py\n\
+alertas: PYTHONPATH=. python ms_alertas/app.py\n\
+rutas: PYTHONPATH=. python ms_rutas/app.py\n\
 geografia: PYTHONPATH=. python ms_geografia/app.py" > Procfile.prod
 
 # Expose ports used by microservices
