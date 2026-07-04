@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 class EvacuacionService {
-  final String _baseUrl = "http://10.223.8.163:5003";
+  final String _baseUrl = "http://54.197.117.21:5003";
 
   Future<List<LatLng>> obtenerRuta({
     required LatLng origen,

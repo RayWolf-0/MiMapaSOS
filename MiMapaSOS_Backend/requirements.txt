@@ -1,4 +1,4 @@
-Flask
+Flask[async]
 psycopg2-binary
 requests
 flask-cors
