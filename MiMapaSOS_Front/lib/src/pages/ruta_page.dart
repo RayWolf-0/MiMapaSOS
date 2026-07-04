@@ -45,24 +45,49 @@ class _RutaPageState extends State<RutaPage> {
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'cl.duoc.mimapasos.lylo',
                 ),
-                // se dibuja la linea de la ruta con un color distintivo y un grosor adecuado para resaltarla ruta en el mapa
+                // Polyline con efecto de borde (línea gruesa negra abajo, línea roja arriba)
                 PolylineLayer(
                   polylines: [
                     Polyline(
                       points: widget.puntosRuta,
-                      color: const Color(0xFFF48FB1), // Rose Gold para la ruta
-                      strokeWidth: 6.0,
+                      color: Colors.black87, // Borde negro
+                      strokeWidth: 8.0,
+                    ),
+                    Polyline(
+                      points: widget.puntosRuta,
+                      color: Colors.redAccent, // Centro rojo brillante
+                      strokeWidth: 4.5,
                     ),
                   ],
                 ),
                 MarkerLayer(
                   markers: [
-                    // Marcador de Destino Seguro
+                    // Marcador de Destino Seguro (Diseño moderno)
                     Marker(
                       point: destinoSeguro,
-                      width: 50,
-                      height: 50,
-                      child: const Icon(Icons.flag_circle_rounded, color: Color(0xFFA5D6A7), size: 45), // Verde
+                      width: 60,
+                      height: 60,
+                      child: Stack(
+                        alignment: Alignment.topCenter,
+                        children: [
+                          // Sombra y borde exterior
+                          const Icon(Icons.location_on, color: Colors.black, size: 56),
+                          // Relleno principal del pin
+                          const Icon(Icons.location_on, color: Colors.redAccent, size: 50),
+                          // Círculo interno (el "agujero" del pin)
+                          Positioned(
+                            top: 13,
+                            child: Container(
+                              width: 14,
+                              height: 14,
+                              decoration: const BoxDecoration(
+                                color: Colors.black87,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

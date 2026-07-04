@@ -6,7 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:yaml/yaml.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/evacuacion_service.dart';
 import 'dart:ui';
 import 'alerta_page.dart';
@@ -30,6 +30,54 @@ class _MapaPageState extends State<MapaPage> {
 
   String _nombreUsuario = 'usuario';
 
+  // Polígono de tierra firme — SOLO costa Pacífico + Punta Ángeles + caja continental.
+  //
+  // ⚠ POR QUÉ no trazamos la costa de la bahía (Puerto → Barón → Viña):
+  //   El rayo se proyecta al ESTE. Los vértices de la bahía corren de NW a SE,
+  //   cruzando el rayo de cualquier punto urbano de Valparaíso → doble cruce
+  //   (costa + caja continental) → paridad par → clasificado "mar". Bug crítico.
+  //   Al eliminar esos vértices, la bahía queda clasificada como "tierra" (aceptable
+  //   para esta app) y todo el casco urbano queda correctamente clasificado como tierra.
+  static const List<LatLng> _poligonoLand = [
+    // === Costa sur (Laguna Verde → Torpederas) ===
+    LatLng(-33.100, -71.665),
+    LatLng(-33.065, -71.650), // Laguna Verde
+    LatLng(-33.055, -71.636), // Torpederas
+    // === Costa Pacífico de Playa Ancha (oeste) ===
+    LatLng(-33.050, -71.640),
+    LatLng(-33.044, -71.648),
+    LatLng(-33.037, -71.654),
+    LatLng(-33.028, -71.659),
+    LatLng(-33.019, -71.659),
+    LatLng(-33.012, -71.654), // Punta Ángeles
+    // === Cierre norte: NO se traza la bahía (evita doble cruce en zona urbana) ===
+    LatLng(-32.945, -71.645), // Punto norte de cierre (sobre el agua)
+    LatLng(-32.945, -71.400), // Esquina NE
+    // === Caja continental ===
+    LatLng(-33.120, -71.400),
+    LatLng(-33.120, -71.665),
+  ];
+
+
+  // Algoritmo Ray-Casting (Even-Odd) proyectando el rayo al ESTE
+  bool _puntoEnPoligono(LatLng punto, List<LatLng> vertices) {
+    int intersectCount = 0;
+    for (int i = 0; i < vertices.length; i++) {
+      LatLng p1 = vertices[i];
+      LatLng p2 = vertices[(i + 1) % vertices.length];
+      if (p1.latitude > punto.latitude != p2.latitude > punto.latitude) {
+        double intersectLng = (p2.longitude - p1.longitude) *
+                (punto.latitude - p1.latitude) /
+                (p2.latitude - p1.latitude) +
+            p1.longitude;
+        if (punto.longitude < intersectLng) {
+          intersectCount++;
+        }
+      }
+    }
+    return intersectCount % 2 != 0;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -38,56 +86,65 @@ class _MapaPageState extends State<MapaPage> {
     _cargarPerimetrosVisuales();
   }
 
-  // FIX 1: Con Google Sign-In el displayName viene en la cuenta de Google,
-  // no siempre en currentUser inmediatamente. Se lee desde GoogleSignIn primero,
-  // luego se refuerza con authStateChanges como respaldo.
-Future<void> _cargarUsuario() async {
-  try {
-    final User? user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      // Buscar el perfil de Google dentro de los proveedores vinculados
-      final googleData = user.providerData.firstWhere(
-        (p) => p.providerId == 'google.com',
-        orElse: () => user.providerData.first,
-      );
-      if (mounted) {
+  // Ahora Firebase Auth sí tiene sesión activa (login_page la registra).
+  // providerData de google.com siempre contiene el displayName completo.
+  void _cargarUsuario() {
+    try {
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
         setState(() {
-          _nombreUsuario = googleData.displayName != null && googleData.displayName!.trim().isNotEmpty
-              ? googleData.displayName!.trim().split(' ')[0].toLowerCase()
-              : _extraerNombre(user);
+          _nombreUsuario = _extraerNombre(user);
         });
       }
-    }
 
-    FirebaseAuth.instance.authStateChanges().listen((User? user) {
-      if (mounted) {
-        setState(() {
-          _nombreUsuario = user != null ? _extraerNombre(user) : 'usuario';
-        });
-      }
-    });
-  } catch (e) {
-    debugPrint("No se pudo cargar la sesión de Auth: $e");
+      // Listener para mantener el nombre actualizado si cambia la sesión
+      FirebaseAuth.instance.authStateChanges().listen((User? user) {
+        if (mounted) {
+          setState(() {
+            _nombreUsuario = user != null ? _extraerNombre(user) : 'usuario';
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint("No se pudo cargar la sesión de Auth: $e");
+    }
   }
-}
 
   String _extraerNombre(User user) {
+    // providerData de Google siempre tiene displayName correcto
+    try {
+      final googleProvider = user.providerData.firstWhere(
+        (p) => p.providerId == 'google.com',
+      );
+      if (googleProvider.displayName != null &&
+          googleProvider.displayName!.trim().isNotEmpty) {
+        return googleProvider.displayName!.trim().split(' ')[0].toLowerCase();
+      }
+    } catch (_) {}
+
+    // Fallback: displayName directo del usuario de Firebase
     if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
       return user.displayName!.trim().split(' ')[0].toLowerCase();
-    } else if (user.email != null && user.email!.isNotEmpty) {
+    }
+
+    // Último recurso: parte del email
+    if (user.email != null && user.email!.isNotEmpty) {
       return user.email!.split('@')[0].toLowerCase();
     }
+
     return 'usuario';
   }
 
   Future<void> _cargarPerimetrosVisuales() async {
     try {
-      final String yamlString = await rootBundle.loadString('assets/config/zonas.yml');
+      final String yamlString =
+          await rootBundle.loadString('assets/config/zonas.yml');
       final YamlMap yamlData = loadYaml(yamlString);
       final List<CircleMarker> listaTemporal = [];
 
       for (var zona in yamlData['zonas_seguras']) {
-        final String idZona = (zona['id'] ?? zona['id_zona'] ?? '').toString().toUpperCase();
+        final String idZona =
+            (zona['id'] ?? zona['id_zona'] ?? '').toString().toUpperCase();
         final double lat = double.parse(zona['lat'].toString());
         final double lng = double.parse(zona['lng'].toString());
 
@@ -100,7 +157,7 @@ Future<void> _cargarUsuario() async {
         listaTemporal.add(
           CircleMarker(
             point: LatLng(lat, lng),
-            radius: esCota30 ? 120 : 400,
+            radius: esCota30 ? 120 : 200,
             useRadiusInMeter: true,
             color: esCota30
                 ? const Color(0xFF0288D1).withOpacity(0.06)
@@ -120,36 +177,11 @@ Future<void> _cargarUsuario() async {
     }
   }
 
-  // FIX 2: Reemplaza el ray-casting por zonas rectangulares del mar,
-  // mucho más confiable para la costa recta de Valparaíso/Viña.
-  // Cada zona define un rectángulo donde se sabe con certeza que hay mar.
   bool _esMar(LatLng punto) {
-    final double lat = punto.latitude;
-    final double lng = punto.longitude;
-
-    // Zona mar abierto al oeste de toda la costa (límite seguro)
-    if (lng < -71.660) return true;
-
-    // Mar frente a Reñaca / Las Salinas (Viña del Mar norte)
-    if (lat >= -33.000 && lat <= -32.960 && lng < -71.548) return true;
-
-    // Mar frente a Viña del Mar centro (Av. Perú / Marina)
-    if (lat >= -33.020 && lat < -33.000 && lng < -71.560) return true;
-
-    // Mar frente a Viña del Mar sur / Caleta Abarca
-    if (lat >= -33.035 && lat < -33.020 && lng < -71.572) return true;
-
-    // Mar frente a Valparaíso norte (Av. España / Portales)
-    if (lat >= -33.045 && lat < -33.035 && lng < -71.590) return true;
-
-    // Mar frente a Valparaíso centro (Barón / Puerto)
-    if (lat >= -33.055 && lat < -33.045 && lng < -71.615) return true;
-
-    // Mar frente a Valparaíso sur (Torpederas / Laguna Verde)
-    if (lat >= -33.080 && lat < -33.055 && lng < -71.640) return true;
-
-    return false;
+    // Si NO está dentro de la masa de tierra firme, entonces está en el mar
+    return !_puntoEnPoligono(punto, _poligonoLand);
   }
+
 
   Future<void> _determinarUbicacion() async {
     bool serviceEnabled;
@@ -158,6 +190,7 @@ Future<void> _cargarUsuario() async {
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       _setUbicacionPorDefecto();
+      _mostrarWarningGPS(disabled: true);
       return;
     }
 
@@ -166,12 +199,14 @@ Future<void> _cargarUsuario() async {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         _setUbicacionPorDefecto();
+        _mostrarWarningGPS(disabled: false);
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
       _setUbicacionPorDefecto();
+      _mostrarWarningGPS(disabled: false);
       return;
     }
 
@@ -194,22 +229,120 @@ Future<void> _cargarUsuario() async {
     });
   }
 
-  void _centrarMapaEnUsuario() {
+  void _mostrarWarningGPS({required bool disabled}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF1E1E1E)
+              : Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const AnimatedGPSIcon(),
+                const SizedBox(height: 30),
+                Text(
+                  disabled ? "GPS Desactivado" : "Ubicación Denegada",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: _mainFont,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : const Color(0xFF2E4D68),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  disabled
+                      ? "Para calcular tu ruta de evacuación rápida ante un tsunami, es obligatorio activar la localización GPS del dispositivo."
+                      : "Para ubicarte en el mapa y trazar tu ruta de escape, la aplicación necesita permisos de localización permanente.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: _mainFont,
+                    fontSize: 14,
+                    color: Colors.blueGrey[400],
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 25),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE57373),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      if (disabled) {
+                        await Geolocator.openLocationSettings();
+                      } else {
+                        await Geolocator.openAppSettings();
+                      }
+                    },
+                    child: Text(
+                      disabled ? "activar gps" : "otorgar permisos",
+                      style: TextStyle(
+                        fontFamily: _mainFont,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    "continuar sin gps",
+                    style: TextStyle(
+                      fontFamily: _mainFont,
+                      color: Colors.blueGrey[400],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _centrarMapaEnUsuario() async {
+    setState(() {
+      _buscandoGPS = true;
+    });
+    await _determinarUbicacion();
     if (_ubicacionActual != null) {
       _mapController.move(_ubicacionActual!, 16.0);
     }
   }
 
   void _colocarPinSimulacion(LatLng punto) {
-    // Primero: bloquear el mar con popup de diálogo (no solo snackbar)
+    // Primero: bloquear el mar con diálogo modal
     if (_esMar(punto)) {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
             children: [
-              const Icon(Icons.waves_rounded, color: Color(0xFF0288D1), size: 28),
+              const Icon(Icons.waves_rounded,
+                  color: Color(0xFF0288D1), size: 28),
               const SizedBox(width: 10),
               Text(
                 "zona inválida",
@@ -260,11 +393,13 @@ Future<void> _cargarUsuario() async {
         SnackBar(
           content: Text(
             'Simulación limitada a la costa de valparaíso/viña.',
-            style: TextStyle(fontFamily: _mainFont, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                fontFamily: _mainFont, fontWeight: FontWeight.bold),
           ),
           backgroundColor: const Color(0xFFE57373),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
       );
     }
@@ -274,50 +409,11 @@ Future<void> _cargarUsuario() async {
     Navigator.pop(context);
 
     try {
-      LatLng puntoDePartida =
-          _pinSimulacion ?? _ubicacionActual ?? const LatLng(-33.045, -71.615);
+      LatLng puntoDePartida = _pinSimulacion ??
+          _ubicacionActual ??
+          const LatLng(-33.045, -71.615);
 
-      final String yamlString =
-          await rootBundle.loadString('assets/config/zonas.yml');
-      final YamlMap yamlData = loadYaml(yamlString);
-
-      LatLng puntoDestino = const LatLng(-33.0180, -71.5380);
-      double distanciaMinimaCentroide = double.infinity;
-      double distanciaMinimaAbsoluta = double.infinity;
-
-      for (var zona in yamlData['zonas_seguras']) {
-        final String idZona =
-            (zona['id'] ?? zona['id_zona'] ?? '').toString().toUpperCase();
-        final double lat = double.parse(zona['lat'].toString());
-        final double lng = double.parse(zona['lng'].toString());
-        final LatLng puntoZona = LatLng(lat, lng);
-
-        bool esCota30 = idZona.contains('COTA30');
-
-        if (!esCota30 && lat > -33.030 && lat < -33.000 && lng < -71.545) {
-          continue;
-        }
-
-        double distancia = Geolocator.distanceBetween(
-          puntoDePartida.latitude,
-          puntoDePartida.longitude,
-          puntoZona.latitude,
-          puntoZona.longitude,
-        );
-
-        if (distancia < distanciaMinimaAbsoluta) {
-          distanciaMinimaAbsoluta = distancia;
-          puntoDestino = puntoZona;
-        }
-
-        if (!esCota30) {
-          if (distancia < distanciaMinimaCentroide) {
-            distanciaMinimaCentroide = distancia;
-          }
-        }
-      }
-
-      if (distanciaMinimaCentroide <= 400) {
+      if (_esMar(puntoDePartida)) {
         if (context.mounted) {
           showDialog(
             context: context,
@@ -326,11 +422,11 @@ Future<void> _cargarUsuario() async {
                   borderRadius: BorderRadius.circular(20)),
               title: Row(
                 children: [
-                  const Icon(Icons.verified_user_rounded,
-                      color: Colors.green, size: 28),
+                  const Icon(Icons.waves_rounded,
+                      color: Color(0xFF0288D1), size: 28),
                   const SizedBox(width: 10),
                   Text(
-                    "ya estás a salvo",
+                    "zona inválida",
                     style: TextStyle(
                       fontFamily: _mainFont,
                       fontWeight: FontWeight.bold,
@@ -340,7 +436,7 @@ Future<void> _cargarUsuario() async {
                 ],
               ),
               content: Text(
-                "tu ubicación actual ya se encuentra dentro de una zona segura (sobre la cota 30). mantén la calma y quédate donde estás.",
+                "no es posible calcular una ruta de evacuación desde el mar.\n\nla amenaza de tsunami proviene del océano, por favor colócate en tierra firme para evacuar.",
                 style: TextStyle(fontFamily: _mainFont, fontSize: 15),
               ),
               actions: [
@@ -361,6 +457,31 @@ Future<void> _cargarUsuario() async {
           );
         }
         return;
+      }
+
+      final String yamlString =
+          await rootBundle.loadString('assets/config/zonas.yml');
+      final YamlMap yamlData = loadYaml(yamlString);
+
+      LatLng puntoDestino = const LatLng(-33.0180, -71.5380);
+      double distanciaMinimaAbsoluta = double.infinity;
+
+      for (var zona in yamlData['zonas_seguras']) {
+        final double lat = double.parse(zona['lat'].toString());
+        final double lng = double.parse(zona['lng'].toString());
+        final LatLng puntoZona = LatLng(lat, lng);
+
+        double distancia = Geolocator.distanceBetween(
+          puntoDePartida.latitude,
+          puntoDePartida.longitude,
+          puntoZona.latitude,
+          puntoZona.longitude,
+        );
+
+        if (distancia < distanciaMinimaAbsoluta) {
+          distanciaMinimaAbsoluta = distancia;
+          puntoDestino = puntoZona;
+        }
       }
 
       if (context.mounted) {
@@ -405,7 +526,8 @@ Future<void> _cargarUsuario() async {
         Navigator.push(
           context,
           MaterialPageRoute(
-              builder: (context) => AlertaPage(rutaSimulada: rutaCalculada)),
+              builder: (context) =>
+                  AlertaPage(rutaSimulada: rutaCalculada)),
         );
       }
     } catch (e) {
@@ -428,7 +550,8 @@ Future<void> _cargarUsuario() async {
     var datosGuardados = box.get('ultimaRuta');
 
     if (datosGuardados != null) {
-      List<LatLng> rutaOffline = (datosGuardados as List<dynamic>).map((nodo) {
+      List<LatLng> rutaOffline =
+          (datosGuardados as List<dynamic>).map((nodo) {
         final mapaNodo = Map<String, double>.from(nodo as Map);
         return LatLng(mapaNodo['lat']!, mapaNodo['lng']!);
       }).toList();
@@ -465,6 +588,32 @@ Future<void> _cargarUsuario() async {
     );
   }
 
+  Future<void> _abrirPlanesSenapred() async {
+    Navigator.pop(context);
+    final Uri url = Uri.parse("https://www.senapred.cl/plan-de-evacuacion-valparaiso/");
+    try {
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("No se pudo abrir el sitio web de SENAPRED."),
+              backgroundColor: Color(0xFFE57373),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error al abrir el enlace: $e"),
+            backgroundColor: Color(0xFFE57373),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -481,8 +630,8 @@ Future<void> _cargarUsuario() async {
                     const CircleAvatar(
                         radius: 25,
                         backgroundColor: Color(0xFFF48FB1),
-                        child:
-                            Icon(Icons.person, color: Colors.white, size: 30)),
+                        child: Icon(Icons.person,
+                            color: Colors.white, size: 30)),
                     const SizedBox(width: 15),
                     Expanded(
                       child: Text(
@@ -518,7 +667,18 @@ Future<void> _cargarUsuario() async {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.map_outlined, color: Colors.white70),
+                leading:
+                    const Icon(Icons.menu_book_rounded, color: Colors.white70),
+                title: Text("planes oficiales senapred",
+                    style: TextStyle(
+                        fontFamily: _mainFont,
+                        color: Colors.white,
+                        fontSize: 16)),
+                onTap: _abrirPlanesSenapred,
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.map_outlined, color: Colors.white70),
                 title: Text("regiones (próximamente)",
                     style: TextStyle(
                         fontFamily: _mainFont,
@@ -543,8 +703,8 @@ Future<void> _cargarUsuario() async {
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(15),
-                    border:
-                        Border.all(color: Colors.white.withOpacity(0.1)),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.1)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,8 +752,10 @@ Future<void> _cargarUsuario() async {
                       margin: const EdgeInsets.only(bottom: 15),
                       child: TextButton.icon(
                         style: TextButton.styleFrom(
-                          backgroundColor: Colors.white.withOpacity(0.05),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor:
+                              Colors.white.withOpacity(0.05),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10)),
                         ),
@@ -667,7 +829,8 @@ Future<void> _cargarUsuario() async {
         children: [
           _buscandoGPS
               ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xFFF48FB1)))
+                  child: CircularProgressIndicator(
+                      color: Color(0xFFF48FB1)))
               : FlutterMap(
                   mapController: _mapController,
                   options: MapOptions(
@@ -696,7 +859,8 @@ Future<void> _cargarUsuario() async {
                                     horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF2E4D68),
-                                  borderRadius: BorderRadius.circular(15),
+                                  borderRadius:
+                                      BorderRadius.circular(15),
                                   border: Border.all(
                                       color: const Color(0xFFF48FB1),
                                       width: 2),
@@ -735,7 +899,8 @@ Future<void> _cargarUsuario() async {
                                       horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius:
+                                        BorderRadius.circular(10),
                                     boxShadow: const [
                                       BoxShadow(
                                           color: Colors.black26,
@@ -752,8 +917,10 @@ Future<void> _cargarUsuario() async {
                                     ),
                                   ),
                                 ),
-                                const Icon(Icons.person_pin_circle_rounded,
-                                    color: Color(0xFF81D4FA), size: 52),
+                                const Icon(
+                                    Icons.person_pin_circle_rounded,
+                                    color: Color(0xFF81D4FA),
+                                    size: 52),
                               ],
                             ),
                           ),
@@ -761,6 +928,62 @@ Future<void> _cargarUsuario() async {
                     ),
                   ],
                 ),
+
+          // Leyenda oficial de mapas de inundación (SENAPRED / SHOA)
+          Positioned(
+            bottom: _pinSimulacion != null ? 180 : 100,
+            left: 16,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(color: Colors.white.withOpacity(0.4)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 8,
+                      )
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4CAF50).withOpacity(0.25),
+                              border: Border.all(color: const Color(0xFF81C784), width: 1.5),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Zona Segura (Cota 30+)",
+                            style: TextStyle(
+                              fontFamily: _mainFont,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF2E4D68),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
 
           SafeArea(
             child: Padding(
@@ -771,7 +994,8 @@ Future<void> _cargarUsuario() async {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(25),
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      filter:
+                          ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 20, vertical: 12),
@@ -808,7 +1032,8 @@ Future<void> _cargarUsuario() async {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(20),
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      filter:
+                          ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.8),
@@ -890,6 +1115,82 @@ Future<void> _cargarUsuario() async {
             ),
         ],
       ),
+    );
+  }
+}
+
+class AnimatedGPSIcon extends StatefulWidget {
+  const AnimatedGPSIcon({super.key});
+
+  @override
+  State<AnimatedGPSIcon> createState() => _AnimatedGPSIconState();
+}
+
+class _AnimatedGPSIconState extends State<AnimatedGPSIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    
+    _scaleAnimation = Tween<double>(begin: 0.9, end: 1.15).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            // Efecto de onda de radar
+            Container(
+              width: 100 * _scaleAnimation.value,
+              height: 100 * _scaleAnimation.value,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFE57373).withOpacity(1.0 - _controller.value),
+              ),
+            ),
+            // Contenedor central con icono
+            Container(
+              width: 70,
+              height: 70,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFFE57373),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 10,
+                    offset: Offset(0, 5),
+                  )
+                ],
+              ),
+              child: const Icon(
+                Icons.location_off_rounded,
+                color: Colors.white,
+                size: 36,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

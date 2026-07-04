@@ -25,6 +25,22 @@ class _AlertaPageState extends State<AlertaPage> {
 
   // Función que hace sonar el ruido fuerte
   void _activarAlarma() async {
+    // Establecer el contexto de audio global para omitir el modo de silencio físico
+    final audioContext = AudioContext(
+      iOS: AudioContextIOS(
+        category: AVAudioSessionCategory.playback,
+        options: const {AVAudioSessionOptions.mixWithOthers},
+      ),
+      android: AudioContextAndroid(
+        isSpeakerphoneOn: true,
+        stayAwake: true,
+        contentType: AndroidContentType.music,
+        usageType: AndroidUsageType.media,
+        audioFocus: AndroidAudioFocus.gain,
+      ),
+    );
+    await AudioPlayer.global.setAudioContext(audioContext);
+
     // Configuramos para que el sonido se repita en bucle (loop) como una alarma real
     await _reproductorAudio.setReleaseMode(ReleaseMode.loop);
     // Reproducimos el archivo MP3

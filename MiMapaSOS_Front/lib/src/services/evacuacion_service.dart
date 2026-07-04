@@ -22,7 +22,8 @@ class EvacuacionService {
     );
 
 try {
-      final response = await http.get(url).timeout(const Duration(seconds: 15));
+      // Aumentamos el timeout a 45s para casos en que la BD o la red están lentas
+      final response = await http.get(url).timeout(const Duration(seconds: 45));
       
       print("Respuesta del servidor: ${response.body}");
 

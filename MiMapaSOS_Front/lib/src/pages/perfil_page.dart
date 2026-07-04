@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart' as g_auth;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'login_page.dart';
-import '../../main.dart'; // 
+import '../../main.dart'; 
 
 class PerfilPage extends StatefulWidget {
   const PerfilPage({super.key});
@@ -14,11 +15,14 @@ class PerfilPage extends StatefulWidget {
 class _PerfilPageState extends State<PerfilPage> {
   final String _mainFont = 'Urbanist';
 
-// cerrar sesion
+  // cerrar sesion
   Future<void> _cerrarSesion() async {
     try {
+      // 1. Cerrar sesión en Firebase
+      await FirebaseAuth.instance.signOut();
+
+      // 2. Cerrar sesión y desconectar Google
       await g_auth.GoogleSignIn.instance.signOut();
-      
       await g_auth.GoogleSignIn.instance.disconnect(); 
 
       if (mounted) {
@@ -29,13 +33,15 @@ class _PerfilPageState extends State<PerfilPage> {
         );
       }
     } catch (e) {
-      print("Error al cerrar sesión: $e");
+      debugPrint("Error al cerrar sesión: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
     bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       // El color de fondo se adapta si es oscuro o claro
@@ -65,15 +71,19 @@ class _PerfilPageState extends State<PerfilPage> {
             CircleAvatar(
               radius: 50,
               backgroundColor: isDarkMode ? Colors.grey[800] : Colors.blue[100],
-              child: Icon(
-                FontAwesomeIcons.userAstronaut,
-                size: 50,
-                color: isDarkMode ? Colors.white : const Color(0xFF2E4D68),
-              ),
+              backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
+              child: user?.photoURL == null
+                  ? Icon(
+                      FontAwesomeIcons.userAstronaut,
+                      size: 50,
+                      color: isDarkMode ? Colors.white : const Color(0xFF2E4D68),
+                    )
+                  : null,
             ),
             const SizedBox(height: 16),
             Text(
-              "Rescatista SOS", 
+              user?.displayName ?? "Usuario de Google", 
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: _mainFont,
                 fontSize: 24,
@@ -81,6 +91,18 @@ class _PerfilPageState extends State<PerfilPage> {
                 color: isDarkMode ? Colors.white : const Color(0xFF333333),
               ),
             ),
+            if (user?.email != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                user!.email!,
+                style: TextStyle(
+                  fontFamily: _mainFont,
+                  fontSize: 16,
+                  color: isDarkMode ? Colors.grey[400] : Colors.blueGrey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
             const SizedBox(height: 40),
 
             // ajustes

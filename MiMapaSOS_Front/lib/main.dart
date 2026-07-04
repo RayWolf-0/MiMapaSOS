@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'src/pages/login_page.dart';
 
 // --- 1. VARIABLE GLOBAL PARA EL TEMA ---
@@ -9,6 +10,9 @@ final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 void main() async {
   // Obligatorio: Le dice a Flutter que espere a que los motores nativos arranquen
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializar Firebase para poder usar FirebaseAuth
+  await Firebase.initializeApp();
   
   // Inicializamos Hive en la memoria del celular
   await Hive.initFlutter();

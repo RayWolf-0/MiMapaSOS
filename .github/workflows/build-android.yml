@@ -1,0 +1,57 @@
+name: Build and Release Android APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'MiMapaSOS_Front/**'
+      - '.github/workflows/build-android.yml'
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+        # Utiliza la última versión estable de Flutter, o puedes fijar una versión específica
+        # flutter-version: '3.19.0' 
+
+    - name: Install dependencies
+      working-directory: ./MiMapaSOS_Front
+      run: flutter pub get
+
+    - name: Build APK (Release)
+      working-directory: ./MiMapaSOS_Front
+      run: flutter build apk --release
+
+    - name: Upload APK to GitHub Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release
+        path: MiMapaSOS_Front/build/app/outputs/flutter-apk/app-release.apk
+
+    # (Opcional) Si quieres subir el APK directamente a AWS S3 para que tus usuarios lo descarguen desde un link de tu propio dominio, puedes descomentar y configurar esto:
+    # - name: Configure AWS credentials
+    #   uses: aws-actions/configure-aws-credentials@v4
+    #   with:
+    #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    #     aws-region: us-east-1 # Tu región
+    #
+    # - name: Upload APK to AWS S3
+    #   run: |
+    #     aws s3 cp MiMapaSOS_Front/build/app/outputs/flutter-apk/app-release.apk s3://[NOMBRE_DE_TU_BUCKET]/descargas/mimapasos.apk --acl public-read

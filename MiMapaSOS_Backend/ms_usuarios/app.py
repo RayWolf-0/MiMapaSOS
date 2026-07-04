@@ -34,6 +34,8 @@ async def login_google(): # <--- AGREGAR ASYNC
         # Token inválido
         return jsonify({"status": "error", "message": "Token de Google no válido"}), 401
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Error en login_google: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
