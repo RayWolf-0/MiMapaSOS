@@ -3,3 +3,6 @@ psycopg2-binary
 requests
 flask-cors
 networkx
+osmnx
+google-auth
+pyproj
